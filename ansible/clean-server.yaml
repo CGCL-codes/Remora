@@ -1,0 +1,8 @@
+- hosts: Remora
+  remote_user: vagrant
+  gather_facts: false
+  tasks:
+    - name: kill Remora
+      shell: killall Remora
+      ignore_errors: yes
+

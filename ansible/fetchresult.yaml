@@ -1,0 +1,21 @@
+- hosts: Remora
+  remote_user: vagrant
+  tasks:
+    - name: fetch the results
+      fetch:
+        src: /vagrant/testbed/{{inventory_hostname}}_{{item}}.txt
+        dest: /vagrant/result/
+      loop:
+        - 0
+
+      when: (ansible_hostname is not match "node0")
+
+    - name: fetch the results
+      fetch:
+        src: /vagrant/testbed/{{inventory_hostname}}_{{item}}.txt
+        dest: /vagrant/result/
+      loop:
+        - 0
+
+      when: (ansible_hostname is match "node0")
+

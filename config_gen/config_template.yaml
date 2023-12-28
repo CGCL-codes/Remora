@@ -1,0 +1,25 @@
+---
+################################################################################
+#
+#   CONFIGURATIONS
+#
+#   - Nest keys where appropriate, and sort alphabetically for easier parsing.
+#
+################################################################################
+IPs:
+  node0: 192.168.33.10
+  node1: 192.168.33.11
+  node2: 192.168.33.12
+  node3: 192.168.33.13
+peers_p2p_port:
+  node0: 9000
+  node1: 9000
+  node2: 9000
+  node3: 9000
+max_pool: 10
+log_level: 3
+batch_size: 100
+timer_config: 2000
+round: 100
+faulty_number: 0
+protocol: Remora

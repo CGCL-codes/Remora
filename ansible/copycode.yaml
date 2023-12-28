@@ -1,0 +1,30 @@
+- hosts: Remora
+  remote_user: vagrant
+  tasks:
+    - name: clone Remora
+      copy:
+        src: /vagrant/Remora/Remora
+        dest: /vagrant/Remora{{item}}/
+      loop:
+        - 0
+      when: (ansible_hostname is not match "node0")
+
+    - name: clone Remora
+      copy:
+        src: /vagrant/Remora/Remora
+        dest: /vagrant/Remora{{item}}/
+      loop:
+        - 0
+      when: (ansible_hostname is match "node0")
+
+    - name: chmod Remora
+      shell: chmod +x /vagrant/Remora{{item}}/Remora
+      loop:
+        - 0
+      when: (ansible_hostname is not match "node0")
+
+    - name: chmod Remora
+      shell: chmod +x /vagrant/Remora{{item}}/Remora
+      loop:
+        - 0
+      when: (ansible_hostname is match "node0")
