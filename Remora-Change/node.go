@@ -1,4 +1,4 @@
-package Remora
+package RemoraC
 
 import (
 	"Remora/config"
@@ -27,7 +27,6 @@ type Node struct {
 	abaFinish     map[uint64]bool
 	chain         *Chain
 	leader        map[uint64]string            // map from round to leader
-	pendingDone   map[uint64]map[string]*Done  // done msg which cannot process right now
 	done          map[uint64]map[string]*Done  // map from round to sender to Done
 	elect         map[uint64]map[string][]byte // map from round to sender to sig
 	protocolFlag  map[uint64]int               // map decides op path or pe path
@@ -62,15 +61,18 @@ type Node struct {
 
 	reflectedTypesMap map[uint8]reflect.Type
 
-	nextRound         chan uint64         // inform that the protocol can enter to next view
-	leaderElect       map[uint64]bool     // mark whether you have elect a leader in a round
-	opPathSig         chan uint64         // 3f+1 blocks have grade=2
-	canMoveNext       chan bool           // 2f+1 received, which can move to next round
-	leaderBlockArrive chan bool           // opLeader arrive
-	roundType         chan map[uint64]int // round type, same as protocolType
-	ABAReturnCH       chan bool
-	noNeedABA         chan bool
-	pathChange        map[uint64]chan bool
+	nextRound         chan uint64          // inform that the protocol can enter to next view
+	leaderElect       map[uint64]bool      // mark whether you have elect a leader in a round
+	opPathSig         chan uint64          // 3f+1 blocks have grade=2
+	canMoveNext       map[uint64]chan bool // 2f+1 received, which can move to next round
+	leaderBlockArrive map[uint64]chan bool // opLeader arrive
+	RoundType         chan RoundMsg        // round type, same as protocolType
+
+	// ABA Sig
+	whetherSendHelp map[uint64]bool
+	ABAReturnCH     map[uint64]chan bool
+	noNeedABA       map[uint64]chan bool
+	pathChange      map[uint64]chan bool
 
 	evaluation []int64 // store the latency of every blocks
 	commitTime []int64 // the time that the leader is committed
@@ -105,7 +107,6 @@ func NewNode(conf *config.Config) *Node {
 	n.chain.blocks[hash] = block
 	n.leader = make(map[uint64]string)
 	n.done = make(map[uint64]map[string]*Done)
-	n.pendingDone = make(map[uint64]map[string]*Done)
 	n.elect = make(map[uint64]map[string][]byte)
 	n.protocolFlag = make(map[uint64]int)
 	n.doneEnoughSig = make(map[uint64]bool)
@@ -136,28 +137,37 @@ func NewNode(conf *config.Config) *Node {
 
 	n.reflectedTypesMap = reflectedTypesMap
 
-	n.nextRound = make(chan uint64, 1)
+	// n.nextRound = make(chan uint64, 1)
 	n.opPathSig = make(chan uint64, 1)
-	n.roundType = make(chan map[uint64]int)
-	n.canMoveNext = make(chan bool, 1)
+	// n.roundType = make(chan RoundMsg, n.roundNumber)
+	n.canMoveNext = make(map[uint64]chan bool)
 	n.leaderElect = make(map[uint64]bool)
-	n.leaderBlockArrive = make(chan bool, 1)
-	n.ABAReturnCH = make(chan bool, 1)
-	n.noNeedABA = make(chan bool, 1)
+	n.leaderBlockArrive = make(map[uint64]chan bool)
+	n.ABAReturnCH = make(map[uint64]chan bool)
+	n.noNeedABA = make(map[uint64]chan bool)
+	n.whetherSendHelp = make(map[uint64]bool)
 	n.pathChange = make(map[uint64]chan bool)
 	return &n
+}
+
+func (n *Node) InitialRoundProcessChannel() {
+	n.nextRound = make(chan uint64, n.roundNumber)
+	n.RoundType = make(chan RoundMsg, n.roundNumber)
 }
 
 // start the protocol and make it run target rounds
 func (n *Node) RunLoop() {
 	var currentRound uint64
 	currentRound = 1
-	//n.timer = time.NewTimer(10 * time.Millisecond)
+	// n.timer = time.NewTimer(10 * time.Millisecond)
+	// n.roundType = make(chan RoundMsg, n.roundNumber)
 	start := time.Now().UnixNano()
 	// initial setting
-	initialRound := make(map[uint64]int)
-	initialRound[1] = 0
-	n.roundType <- initialRound
+	initialRound := RoundMsg{
+		Round: 1,
+		Type:  0,
+	}
+	n.RoundType <- initialRound
 
 	for {
 		if currentRound > n.roundNumber {
@@ -190,8 +200,8 @@ func (n *Node) RunLoop() {
 	n.logger.Info("the total commit", "block number", blockNum, "time", pastTime)
 }
 
-func (n *Node) ReturnRoundType() chan map[uint64]int {
-	return n.roundType
+func (n *Node) ReturnRoundType() chan RoundMsg {
+	return n.RoundType
 }
 
 func (n *Node) InitCBC(conf *config.Config) {
@@ -203,6 +213,47 @@ func (n *Node) UpdateABACondition(round uint64) {
 	n.lock.Lock()
 	n.abaFinish[round] = true
 	n.lock.Unlock()
+}
+
+func (n *Node) initialOPPathSig(round uint64) {
+	n.lock.Lock()
+	defer n.lock.Unlock()
+
+	if _, ok := n.leaderBlockArrive[round]; !ok {
+		ch := make(chan bool, 1)
+		n.leaderBlockArrive[round] = ch
+	}
+
+	if _, ok := n.canMoveNext[round]; !ok {
+		ch := make(chan bool, 1)
+		n.canMoveNext[round] = ch
+	}
+}
+
+func (n *Node) initialABASig(round uint64) {
+	n.lock.Lock()
+	defer n.lock.Unlock()
+
+	if _, ok := n.ABAReturnCH[round]; !ok {
+		ch := make(chan bool, 1)
+		n.ABAReturnCH[round] = ch
+	}
+
+	if _, ok := n.noNeedABA[round]; !ok {
+		ch := make(chan bool, 1)
+		n.noNeedABA[round] = ch
+	}
+
+}
+
+func (n *Node) initialABA(round uint64) {
+	n.lock.Lock()
+	defer n.lock.Unlock()
+
+	if _, ok := n.abaMap[round]; !ok {
+		n.abaMap[round] = NewABA(n, round)
+		go n.initialABASig(round)
+	}
 }
 
 // select at least 2f+1 blocks in last round
@@ -229,15 +280,6 @@ func (n *Node) storeDone(done *Done) {
 	if _, ok := n.done[done.Round][done.BlockSender]; !ok {
 		n.done[done.Round][done.BlockSender] = done
 		n.moveRound[done.Round]++
-	}
-}
-
-func (n *Node) storePendingDone(done *Done) {
-	if _, ok := n.pendingDone[done.Round]; !ok {
-		n.pendingDone[done.Round] = make(map[string]*Done)
-	}
-	if _, ok := n.pendingDone[done.Round][done.BlockSender]; !ok {
-		n.pendingDone[done.Round][done.BlockSender] = done
 	}
 }
 
@@ -302,38 +344,22 @@ func (n *Node) checkWhetherCanAddToDAG(block *Block) bool {
 	return true
 }
 
-func (n *Node) checkOPFastPath(round uint64) {
-	if len(n.done[round]) == n.nodeNum && round == n.round {
-		n.opPathSig <- round
-	}
-}
-
-func (n *Node) startABAWithOpResult(round uint64) {
+func (n *Node) processOPPath(round uint64) {
 	n.tryToCommitOPLeader(round)
-	n.tryToNextRound(round)
+	go n.tryToNextRound(round)
 }
 
-func (n *Node) startABAProcess(round uint64, opLeader string) {
-	/*
-		Msg := PrepareMsg{
-			Round:       round,
-			PreSender:   n.name,
-			BlockSender: opLeader,
-			Val:         1,
-		}
-		if _, ok := n.dag[round][opLeader]; ok {
-			go n.broadcastPrepareMsg(Msg)
-		} else {
-			Msg.Val = 0
-			go n.broadcastPrepareMsg(Msg)
-		}
-	*/
+func (n *Node) exchangeHelpMsg(round uint64, opLeader string) {
 	helpMsg := HelpMsg{
 		Round:       round,
 		HelpSender:  n.name,
 		BlockSender: opLeader,
 		LBlockExist: 2,
 	}
+	n.lock.Lock()
+	n.whetherSendHelp[round] = true
+	n.lock.Unlock()
+
 	if _, ok := n.done[round][opLeader]; ok {
 		n.broadcastHelpMsg(helpMsg)
 	} else if _, ok1 := n.dag[round][opLeader]; ok1 {
@@ -345,6 +371,104 @@ func (n *Node) startABAProcess(round uint64, opLeader string) {
 	}
 }
 
+func (n *Node) startABAProcess(round uint64, opLeader string) {
+	helpMsg := HelpMsg{
+		Round:       round,
+		HelpSender:  n.name,
+		BlockSender: opLeader,
+		LBlockExist: 2,
+	}
+	n.lock.Lock()
+	n.whetherSendHelp[round] = true
+	n.lock.Unlock()
+
+	if _, ok := n.done[round][opLeader]; ok {
+		n.broadcastHelpMsg(helpMsg)
+	} else if _, ok1 := n.dag[round][opLeader]; ok1 {
+		helpMsg.LBlockExist = 1
+		n.broadcastHelpMsg(helpMsg)
+	} else {
+		helpMsg.LBlockExist = 0
+		n.broadcastHelpMsg(helpMsg)
+	}
+}
+
+func (n *Node) processOPPathWhileTimerExpire(round uint64) {
+	opLeader := "node" + strconv.Itoa(int(round)%n.nodeNum)
+
+	select {
+	case <-n.canMoveNext[n.round]:
+		n.lock.Lock()
+		if _, ok := n.done[round][opLeader]; ok {
+			n.lock.Unlock()
+			n.logger.Info("1-1", "name", n.name, "round", round)
+			n.processOPPath(round)
+		} else {
+			n.lock.Unlock()
+			n.exchangeHelpMsg(round, opLeader)
+			n.logger.Info("1-2", "name", n.name, "round", round)
+			select {
+			case <-n.noNeedABA[round]:
+				<-n.leaderBlockArrive[round]
+				n.logger.Info("1-2-1", "name", n.name, "round", round)
+				n.processOPPath(round)
+			case sig := <-n.ABAReturnCH[round]:
+				if sig {
+					select {
+					case <-n.leaderBlockArrive[round]:
+						n.logger.Info("1-2-2", "name", n.name, "round", round)
+						n.processOPPath(round)
+					}
+				} else {
+					n.logger.Info("BADopLeader!", "name", n.name, "round", round)
+					ch := make(chan bool, 1)
+					n.pathChange[round] = ch
+					n.pathChange[round] <- true
+					go n.tryToNextRound(round)
+				}
+			}
+		}
+
+	}
+}
+
+func (n *Node) processOPPathWhileCanMoveNextRound(round uint64) {
+	opLeader := "node" + strconv.Itoa(int(round)%n.nodeNum)
+
+	n.lock.Lock()
+	if _, ok := n.done[round][opLeader]; ok {
+		n.lock.Unlock()
+		n.processOPPath(round)
+	} else {
+		n.lock.Unlock()
+		select {
+		case <-n.timer.C:
+			n.exchangeHelpMsg(round, opLeader)
+			select {
+			case <-n.noNeedABA[round]:
+				<-n.leaderBlockArrive[round]
+				n.processOPPath(round)
+			case sig := <-n.ABAReturnCH[round]:
+				if sig {
+					select {
+					case <-n.leaderBlockArrive[round]:
+						n.processOPPath(round)
+					}
+				} else {
+					n.logger.Info("BADopLeader!", "name", n.name, "round", round)
+					ch := make(chan bool, 1)
+					n.pathChange[round] = ch
+					n.pathChange[round] <- true
+					go n.tryToNextRound(round)
+				}
+			}
+		case <-n.leaderBlockArrive[round]:
+			n.processOPPath(round)
+		}
+	}
+}
+
+/*
 func (n *Node) checkConditionWhileTimerExpire(round uint64) {
 	opLeader := "node" + strconv.Itoa(int(round)%n.nodeNum)
 	if len(n.done[round]) >= n.quorumNum {
@@ -417,6 +541,7 @@ func (n *Node) checkConditionWhileTimerExpire(round uint64) {
 		}
 	}
 }
+*/
 
 func (n *Node) tryToElectLeader(round uint64) {
 	elect, _ := n.elect[round]
@@ -449,39 +574,30 @@ func (n *Node) tryToNextRound(round uint64) {
 	count := n.moveRound[round]
 
 	if count >= n.quorumNum {
-		/*
-			if n.name == "node0" {
-				n.logger.Info("Msg", "CurRound", n.round, "MoveNum", count, "ProtocolFlag", n.protocolFlag[n.round])
-			}
-		*/
+
+		n.logger.Info("Msg", "name", n.name, "CurRound", n.round, "MoveNum", count, "ProtocolFlag", n.protocolFlag[n.round])
+
 		n.round++
-		roundType := make(map[uint64]int)
+		var roundType RoundMsg
 		// simply add pe path
 		if n.protocolFlag[n.round-1] == 1 {
 			// after waiting round, step into pe path's grbc
 			n.protocolFlag[n.round] = 2
-			roundType[n.round] = 2
-			n.roundType <- roundType
+			roundType.Round = n.round
+			roundType.Type = 2
+			n.RoundType <- roundType
 		} else if n.protocolFlag[n.round-1] == 2 {
 			// step into pe path's cbc
 			n.protocolFlag[n.round] = 3
-			roundType[n.round] = 3
-			n.roundType <- roundType
+			roundType.Round = n.round
+			roundType.Type = 3
+			n.RoundType <- roundType
 		} else if n.protocolFlag[n.round-1] == 3 {
 			// pe path's loop
-			length := len(n.pathChange[round])
-			if length > 0 {
-				for len(n.pathChange[round]) > 0 {
-					<-n.pathChange[round]
-				}
-				n.protocolFlag[n.round] = 0
-				roundType[n.round] = 0
-				n.roundType <- roundType
-			} else {
-				n.protocolFlag[n.round] = 2
-				roundType[n.round] = 2
-				n.roundType <- roundType
-			}
+			n.protocolFlag[n.round] = 0
+			roundType.Round = n.round
+			roundType.Type = 0
+			n.RoundType <- roundType
 		} else if n.protocolFlag[n.round-1] == 0 {
 			// pe path's loop
 			length := len(n.pathChange[round])
@@ -489,19 +605,21 @@ func (n *Node) tryToNextRound(round uint64) {
 				for len(n.pathChange[round]) > 0 {
 					<-n.pathChange[round]
 				}
-				n.protocolFlag[n.round] = 1
-				roundType[n.round] = 1
-				n.roundType <- roundType
+				n.protocolFlag[n.round] = 2
+				roundType.Round = n.round
+				roundType.Type = 2
+				n.RoundType <- roundType
 			} else {
 				n.protocolFlag[n.round] = 0
-				roundType[n.round] = 0
-				n.roundType <- roundType
+				roundType.Round = n.round
+				roundType.Type = 0
+				n.RoundType <- roundType
 			}
 		}
 		go func() {
 			n.nextRound <- round + 1
 		}()
-		//go n.tryToNextRound(round + 1)
+		// go n.tryToNextRound(round + 1)
 	}
 }
 

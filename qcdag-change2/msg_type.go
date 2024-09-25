@@ -1,4 +1,4 @@
-package qcdag
+package qcdag2
 
 import "reflect"
 
@@ -17,10 +17,9 @@ var ready Ready
 var done Done
 
 var reflectedTypesMap = map[uint8]reflect.Type{
-	ProposalTag:   reflect.TypeOf(proposal),
-	VoteTag:       reflect.TypeOf(vote),
-	ElectTag:       reflect.TypeOf(elect),
-	ReadyTag:      reflect.TypeOf(ready),
-	DoneTag:       reflect.TypeOf(done),
+	ProposalTag: reflect.TypeOf(proposal),
+	VoteTag:     reflect.TypeOf(vote),
+	ElectTag:    reflect.TypeOf(elect),
+	ReadyTag:    reflect.TypeOf(ready),
+	DoneTag:     reflect.TypeOf(done),
 }
-

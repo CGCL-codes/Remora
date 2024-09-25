@@ -1,4 +1,4 @@
-package qcdag
+package qcdag2
 
 /*
 import (

@@ -1,4 +1,4 @@
-package qcdag
+package qcdag3
 
 type Block struct {
 	Sender       string

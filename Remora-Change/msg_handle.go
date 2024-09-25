@@ -1,4 +1,4 @@
-package Remora
+package RemoraC
 
 import (
 	"strconv"
@@ -41,14 +41,6 @@ func (n *Node) HandleMsgLoop() {
 						"sender", msgAsserted.DoneSender, "blockSender", msgAsserted.BlockSender)
 					continue
 				}
-				/*
-					if msgAsserted.Round > n.round {
-						n.lock.Lock()
-						n.storePendingDone(&msgAsserted)
-						n.lock.Unlock()
-						continue
-					}
-				*/
 				n.lock.Lock()
 				if n.protocolFlag[msgAsserted.Round] == 0 || n.protocolFlag[msgAsserted.Round] == 2 {
 					n.lock.Unlock()
@@ -64,13 +56,6 @@ func (n *Node) HandleMsgLoop() {
 					continue
 				}
 				go n.cbc.HandleVoteMsg(&msgAsserted)
-			case PrepareMsg:
-				if !n.verifySigED25519(msgAsserted.PreSender, msgWithSig.Msg, msgWithSig.Sig) {
-					n.logger.Error("fail to verify the echo's signature", "round", msgAsserted.Round,
-						"sender", msgAsserted.PreSender)
-					continue
-				}
-				go n.handlePrepareMsg(&msgAsserted)
 			case HelpMsg:
 				if !n.verifySigED25519(msgAsserted.HelpSender, msgWithSig.Msg, msgWithSig.Sig) {
 					n.logger.Error("fail to verify the echo's signature", "round", msgAsserted.Round,
@@ -78,7 +63,7 @@ func (n *Node) HandleMsgLoop() {
 					continue
 				}
 				if _, ok := n.abaMap[msgAsserted.Round]; !ok {
-					n.abaMap[msgAsserted.Round] = NewABA(n, msgAsserted.Round)
+					n.initialABA(msgAsserted.Round)
 				}
 				go n.handleHelpMsg(&msgAsserted)
 			case ABABvalRequestMsg:
@@ -86,7 +71,7 @@ func (n *Node) HandleMsgLoop() {
 				if _, ok := n.abaFinish[msgAsserted.Height]; !ok {
 					n.lock.Unlock()
 					if _, ok := n.abaMap[msgAsserted.Height]; !ok {
-						n.abaMap[msgAsserted.Height] = NewABA(n, msgAsserted.Height)
+						n.initialABA(msgAsserted.Height)
 					}
 					go n.abaMap[msgAsserted.Height].handleBvalRequest(&msgAsserted)
 					continue
@@ -97,7 +82,7 @@ func (n *Node) HandleMsgLoop() {
 				if _, ok := n.abaFinish[msgAsserted.Height]; !ok {
 					n.lock.Unlock()
 					if _, ok := n.abaMap[msgAsserted.Height]; !ok {
-						n.abaMap[msgAsserted.Height] = NewABA(n, msgAsserted.Height)
+						n.initialABA(msgAsserted.Height)
 					}
 					go n.abaMap[msgAsserted.Height].handleAuxRequest(&msgAsserted)
 					continue
@@ -108,7 +93,7 @@ func (n *Node) HandleMsgLoop() {
 				if _, ok := n.abaFinish[msgAsserted.Height]; !ok {
 					n.lock.Unlock()
 					if _, ok := n.abaMap[msgAsserted.Height]; !ok {
-						n.abaMap[msgAsserted.Height] = NewABA(n, msgAsserted.Height)
+						n.initialABA(msgAsserted.Height)
 					}
 					go n.abaMap[msgAsserted.Height].handleExitMessage(&msgAsserted)
 					continue
@@ -130,30 +115,17 @@ func (n *Node) handleElectMsg(elect *Elect) {
 	n.tryToElectLeader(elect.Round)
 }
 
-func (n *Node) handlePrepareMsg(msg *PrepareMsg) {
-	helpMsg := HelpMsg{
-		Round:       msg.Round,
-		HelpSender:  n.name,
-		BlockSender: msg.BlockSender,
-		LBlockExist: 2,
-	}
-	if _, ok := n.done[msg.Round][msg.BlockSender]; ok {
-		n.broadcastHelpMsg(helpMsg)
-	} else if _, ok1 := n.dag[msg.Round][msg.BlockSender]; ok1 {
-		helpMsg.LBlockExist = 1
-		n.broadcastHelpMsg(helpMsg)
-	} else {
-		helpMsg.LBlockExist = 0
-		n.broadcastHelpMsg(helpMsg)
-	}
-}
-
 func (n *Node) handleHelpMsg(msg *HelpMsg) {
 	n.lock.Lock()
 	defer n.lock.Unlock()
 	if _, ok := n.savingHelpMsg[msg.Round]; !ok {
 		n.savingHelpMsg[msg.Round] = make(map[string]*HelpMsg)
 	}
+
+	if _, ok := n.whetherSendHelp[msg.Round]; !ok {
+		go n.exchangeHelpMsg(msg.Round, msg.BlockSender)
+	}
+
 	if _, ok := n.savingHelpMsg[msg.Round][msg.HelpSender]; !ok {
 		n.savingHelpMsg[msg.Round][msg.HelpSender] = msg
 
@@ -172,10 +144,10 @@ func (n *Node) handleHelpMsg(msg *HelpMsg) {
 				}
 			}
 			if count2 > 0 {
-				n.noNeedABA <- true
+				n.noNeedABA[msg.Round] <- true
 				n.logger.Info("Just wait. Grade = 2")
 			} else if count1 == count {
-				n.noNeedABA <- true
+				n.noNeedABA[msg.Round] <- true
 				n.logger.Info("Just wait. ABA directly outputs 1.")
 			} else if count1 > 0 {
 				n.abaMap[msg.Round].inputValue(int(msg.Round), 1, msg.BlockSender, msg.Round)
@@ -194,37 +166,23 @@ func (n *Node) handleDoneMsg(done *Done, flag bool) {
 
 	if flag {
 		n.storeDone(done)
+		n.lock.Unlock()
+		n.initialOPPathSig(done.Round)
+		n.lock.Lock()
 		if n.protocolFlag[done.Round] == 0 {
 			if done.BlockSender == opLeader {
-				n.leaderBlockArrive <- true
+				n.leaderBlockArrive[done.Round] <- true
 			}
 			if len(n.done[done.Round]) >= n.quorumNum {
 				if _, ok := n.doneEnoughSig[done.Round]; !ok {
-					n.canMoveNext <- true
+					n.canMoveNext[done.Round] <- true
 					n.doneEnoughSig[done.Round] = true
 				}
 			}
-			n.checkOPFastPath(done.Round)
 		} else if n.protocolFlag[done.Round] == 2 {
 			n.tryToCommitLeader(done.Round)
 			go n.tryToNextRound(done.Round)
 		}
-	}
-}
-
-func (n *Node) handlePendingDone(round uint64) {
-	n.lock.Lock()
-	if _, ok := n.pendingDone[round]; ok {
-		for _, done := range n.pendingDone[round] {
-			if n.protocolFlag[done.Round] == 0 || n.protocolFlag[done.Round] == 2 {
-				go n.handleDoneMsg(done, true)
-			} else {
-				go n.handleDoneMsg(done, false)
-			}
-		}
-		n.lock.Unlock()
-	} else {
-		n.lock.Unlock()
 	}
 }
 
@@ -253,8 +211,6 @@ func (n *Node) DoneOutputLoop() {
 				n.lock.Unlock()
 				go n.handleDoneMsg(&done, false)
 			}
-			// make sure every node can get 2f+1 done
-			// go n.broadcastDone(done)
 		}
 	}
 }
@@ -264,33 +220,22 @@ func (n *Node) RoundProcessLoop() {
 	for {
 		select {
 		case Msg := <-roundType:
-			for round, Type := range Msg {
-				if _, ok := n.abaMap[round]; !ok {
-					n.abaMap[round] = NewABA(n, round)
-					//n.abaMap[round].initialABA(round)
-				}
-				if Type == 0 {
-					n.timer.Reset(time.Duration(n.timeConfig) * time.Millisecond)
-					for len(n.opPathSig) > 0 {
-						<-n.opPathSig
+			if Msg.Type == 0 {
+				n.initialOPPathSig(Msg.Round)
+				n.initialABA(Msg.Round)
+				n.timer.Reset(time.Duration(n.timeConfig) * time.Millisecond)
+				go func(t *time.Timer, ch chan bool) {
+					// n.logger.Info("CurRoundMsg", "Name", n.name, "Round", round)
+					select {
+					case <-t.C:
+						n.logger.Info("OutOfTime", "name", n.name, "Round", Msg.Round, "Type", Msg.Type)
+						n.processOPPathWhileTimerExpire(Msg.Round)
+					case <-ch:
+						n.processOPPathWhileCanMoveNextRound(Msg.Round)
 					}
-					go func(t *time.Timer, ch chan uint64) {
-						// n.logger.Info("CurRoundMsg", "Name", n.name, "Round", round)
-						select {
-						case <-t.C:
-							// n.logger.Info("OutOfTime", "name", n.name, "Round", round)
-							n.checkConditionWhileTimerExpire(round)
-						case <-ch:
-							n.lock.Lock()
-							n.tryToCommitOPLeader(round)
-							n.lock.Unlock()
-							<-n.canMoveNext
-							<-n.leaderBlockArrive
-							go n.tryToNextRound(round)
-						}
-					}(n.timer, n.opPathSig)
-				}
+				}(n.timer, n.canMoveNext[Msg.Round])
 			}
+
 		}
 	}
 }

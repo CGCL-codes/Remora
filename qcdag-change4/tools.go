@@ -1,4 +1,4 @@
-package qcdag
+package qcdag4
 
 import (
 	"bytes"
@@ -8,7 +8,6 @@ import (
 	"math/rand"
 	"time"
 )
-
 
 func genMsgHashSum(data []byte) ([]byte, error) {
 	msgHash := sha256.New()
@@ -67,4 +66,3 @@ func generateTX(s int) []byte {
 	}
 	return trans
 }
-

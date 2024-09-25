@@ -1,4 +1,4 @@
-package qcdag
+package qcdag1
 
 import (
 	"Remora/config"

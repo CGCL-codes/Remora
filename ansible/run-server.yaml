@@ -1,23 +1,25 @@
 - hosts: Remora
-  remote_user: vagrant
+  remote_user: root
   tasks:
     - name: create testbed dirs
       file:
-        path: /vagrant/testbed
+        path: /root/testbed
         state: directory
 
     - name: run Remora as a daemon
-      shell: "(nohup ./Remora > /vagrant/testbed/{{inventory_hostname}}_{{item}}.txt 2>&1 &)"
+      shell: "(nohup ./Remora > /root/testbed/{{inventory_hostname}}_{{item}}.txt 2>&1 &)"
       args:
-        chdir: /vagrant/Remora{{item}}
+        chdir: /root/Remora{{item}}
       loop:
         - 0
+        - 1
+        - 2
       when: (ansible_hostname is not match "node0")
 
     - name: run Remora as a daemon
-      shell: "(nohup ./Remora > /vagrant/testbed/{{inventory_hostname}}_{{item}}.txt 2>&1 &)"
+      shell: "(nohup ./Remora > /root/testbed/{{inventory_hostname}}_{{item}}.txt 2>&1 &)"
       args:
-        chdir: /vagrant/Remora{{item}}
+        chdir: /root/Remora{{item}}
       loop:
         - 0
       when: (ansible_hostname is match "node0")

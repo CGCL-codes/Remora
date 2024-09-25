@@ -11,6 +11,9 @@ func (n *Node) HandleMsgLoop() {
 	for {
 		select {
 		case msgWithSig := <-msgCh:
+			if n.isFaulty {
+				continue
+			}
 			switch msgAsserted := msgWithSig.Msg.(type) {
 			case rbc.VALMsg:
 				if !n.verifySigED25519(msgAsserted.Proposer, msgWithSig.Msg, msgWithSig.Sig) {

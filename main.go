@@ -1,6 +1,7 @@
 package main
 
 import (
+	"Remora/Remora-Change"
 	"Remora/Remora-main"
 	"Remora/config"
 	"Remora/fork1"
@@ -30,6 +31,8 @@ func main() {
 		startTusk()
 	} else if conf.Protocol == "Remora" {
 		startRemora()
+	} else if conf.Protocol == "RemoraC" {
+		startRemoraC()
 	} else {
 		panic(errors.New("the protocol is unknown"))
 	}
@@ -58,17 +61,16 @@ func startQCDAG() {
 		panic(err)
 	}
 	// wait for each node to start
-	time.Sleep(time.Second * 10)
+	time.Sleep(time.Second * 25)
 	if err = node.EstablishP2PConns(); err != nil {
 		panic(err)
 	}
 	node.InitCBC(conf)
-	if !node.IsFaultyNode() {
-		fmt.Println("node starts the QCDAG!")
-		go node.RunLoop()
-		go node.HandleMsgLoop()
-		node.CBCOutputBlockLoop()
-	}
+	fmt.Println("node starts the QCDAG!")
+	go node.RunLoop()
+	go node.HandleMsgLoop()
+	go node.DoneOutputLoop()
+	node.CBCOutputBlockLoop()
 }
 
 func startRemora() {
@@ -91,21 +93,40 @@ func startRemora() {
 
 }
 
+func startRemoraC() {
+	node := RemoraC.NewNode(conf)
+	node.InitialRoundProcessChannel()
+	if err = node.StartP2PListen(); err != nil {
+		panic(err)
+	}
+	// wait for each node to start
+	time.Sleep(time.Second * 25)
+	if err = node.EstablishP2PConns(); err != nil {
+		panic(err)
+	}
+	node.InitCBC(conf)
+	fmt.Println("node starts the RemoraC!")
+	go node.RunLoop()
+	go node.HandleMsgLoop()
+	go node.RoundProcessLoop()
+	go node.DoneOutputLoop()
+	node.CBCOutputBlockLoop()
+
+}
+
 func startTusk() {
 	node := tusk.NewNode(conf)
 	if err = node.StartP2PListen(); err != nil {
 		panic(err)
 	}
 	// wait for each node to start
-	time.Sleep(time.Second * 10)
+	time.Sleep(time.Second * 25)
 	if err = node.EstablishP2PConns(); err != nil {
 		panic(err)
 	}
 	node.InitRBC(conf)
-	if !node.IsFaultyNode() {
-		fmt.Println("node starts the Tusk!")
-		go node.RunLoop()
-		go node.HandleMsgLoop()
-		node.ConstructedBlockLoop()
-	}
+	fmt.Println("node starts the Tusk!")
+	go node.RunLoop()
+	go node.HandleMsgLoop()
+	node.ConstructedBlockLoop()
 }

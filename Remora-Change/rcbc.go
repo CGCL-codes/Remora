@@ -1,4 +1,4 @@
-package Remora
+package RemoraC
 
 import (
 	"Remora/conn"
@@ -29,6 +29,7 @@ type CBC struct {
 	blockOutput          map[uint64]map[string]bool // mark whether a block has been output before
 	doneOutput           map[uint64]map[string]bool // mark whether a done has been output before
 	blockSend            map[uint64]bool            // mark whether have sent block in a round
+	doneSend             map[uint64]map[string]bool
 }
 
 func (c *CBC) ReturnBlockChan() chan Block {
@@ -58,6 +59,7 @@ func NewCBCer(name string, clusterAddrWithPorts map[string]uint8, connPool *conn
 		tsPublicKey:          tsPublicKey,
 		tsPrivateKey:         tsPrivateKey,
 		blockSend:            make(map[uint64]bool),
+		doneSend:             make(map[uint64]map[string]bool),
 	}
 }
 
@@ -200,13 +202,28 @@ func (c *CBC) tryToOutputBlocks(round uint64, sender string) {
 	// we will not send ready for slow blocks
 
 	//difference
-	if !c.blockSend[block.Round+1] {
+	if _, ok := c.doneSend[round][sender]; !ok {
+		c.doneSend[round] = make(map[string]bool)
+	}
+
+	if !c.doneSend[round][sender] {
+		c.doneSend[round][sender] = true
 		c.lock.Unlock()
 		hash, _ := block.getHash()
 		go c.broadcastReady(block.Round, hash, block.Sender)
 	} else {
 		c.lock.Unlock()
 	}
+
+	/*
+		if !c.blockSend[block.Round+1] {
+			c.lock.Unlock()
+			hash, _ := block.getHash()
+			go c.broadcastReady(block.Round, hash, block.Sender)
+		} else {
+			c.lock.Unlock()
+		}
+	*/
 	/*
 		if block.Round%2 == 1 && !c.blockSend[block.Round+1] {
 			c.lock.Unlock()

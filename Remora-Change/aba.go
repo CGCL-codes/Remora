@@ -1,4 +1,4 @@
-package Remora
+package RemoraC
 
 import (
 	"encoding/binary"
@@ -307,6 +307,10 @@ func (b *ABA) tryOutputAgreement(height uint64, dealer string) {
 	b.aLogger.Debug("assemble the data and reveal the coin", "replica", b.node.name, "round", b.round, "height", b.height,
 		"data", data, "coin", coin)
 
+	if b.round == 0 {
+		coin = 0
+	}
+
 	if len(values) != 1 {
 		if coin == values[0] {
 			b.estimated = values[0]
@@ -441,9 +445,9 @@ func (b *ABA) handleExitMessage(msg *ABAExitMsg) error {
 		b.aLogger.Info("Return from ABA", "nodeName", b.node.name, "output", b.output, "msg.Height", msg.Height)
 		go b.node.UpdateABACondition(msg.Height)
 		if b.output == 1 {
-			b.node.ABAReturnCH <- true
+			b.node.ABAReturnCH[msg.Height] <- true
 		} else {
-			b.node.ABAReturnCH <- false
+			b.node.ABAReturnCH[msg.Height] <- false
 		}
 		/*
 			go func() {

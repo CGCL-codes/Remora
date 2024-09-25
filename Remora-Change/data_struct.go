@@ -1,4 +1,4 @@
-package Remora
+package RemoraC
 
 type Block struct {
 	Sender       string
@@ -85,4 +85,10 @@ type ABAExitMsg struct {
 	Sender string
 	Dealer string
 	Value  int
+}
+
+// RoundMsg presents round's status
+type RoundMsg struct {
+	Type  int
+	Round uint64
 }

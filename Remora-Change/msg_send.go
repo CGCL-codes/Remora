@@ -1,4 +1,4 @@
-package Remora
+package RemoraC
 
 import (
 	"Remora/conn"

@@ -1,18 +1,20 @@
 - hosts: Remora
-  remote_user: vagrant
+  remote_user: root
   tasks:
     - name: copy configuration file
       copy:
         src: /vagrant/Remora/{{inventory_hostname}}_{{item}}.yaml
-        dest: /vagrant/Remora{{item}}/config.yaml
+        dest: /root/Remora{{item}}/config.yaml
       loop:
         - 0
+        - 1
+        - 2
       when: ansible_hostname is not match "node0"
 
     - name: copy configuration file
       copy:
         src: /vagrant/Remora/{{inventory_hostname}}_{{item}}.yaml
-        dest: /vagrant/Remora{{item}}/config.yaml
+        dest: /root/Remora{{item}}/config.yaml
       loop:
         - 0
       when: (ansible_hostname is match "node0")

@@ -7,19 +7,23 @@
 #
 ################################################################################
 IPs:
-  node0: 192.168.33.10
-  node1: 192.168.33.11
-  node2: 192.168.33.12
-  node3: 192.168.33.13
+  node0: 47.250.49.123
+  node1: 8.220.194.58
+  node2: 8.222.235.78
+  node3: 47.245.11.63
+  node4: 47.250.41.119
+  node5: 8.213.144.105
 peers_p2p_port:
   node0: 9000
   node1: 9000
   node2: 9000
   node3: 9000
+  node4: 9000
+  node5: 9000
 max_pool: 10
 log_level: 3
-batch_size: 100
-timer_config: 2000
+batch_size: 300
+timer_config: 10000
 round: 100
 faulty_number: 0
-protocol: Remora
+protocol: qcdag

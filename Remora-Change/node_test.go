@@ -1,4 +1,4 @@
-package Remora
+package RemoraC
 
 import (
 	"Remora/config"
@@ -59,7 +59,9 @@ func setupNodes(logLevel int, batchSize int, round int) []*Node {
 			panic(err)
 		}
 		nodes[i].InitCBC(confs[i])
+		nodes[i].InitialRoundProcessChannel()
 	}
+
 	for i := 0; i < 4; i++ {
 		go nodes[i].EstablishP2PConns()
 	}
@@ -75,7 +77,7 @@ func clean(nodes []*Node) {
 }
 
 func TestWith4Nodes(t *testing.T) {
-	nodes := setupNodes(3, 100, 400)
+	nodes := setupNodes(3, 100, 200)
 	nodes[3].isFaulty = true
 	for i := 0; i < 4; i++ {
 		fmt.Printf("node%d starts the Remora-OP!\n", i)
@@ -87,7 +89,7 @@ func TestWith4Nodes(t *testing.T) {
 	}
 
 	// wait all nodes finish
-	time.Sleep(25 * time.Second)
+	time.Sleep(35 * time.Second)
 
 	clean(nodes)
 }
