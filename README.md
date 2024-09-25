@@ -1,10 +1,11 @@
 ### 1 Description
 This project is used to implement asynchronous BFT.
 
-There are three DAG BFT, names "gradedDag", "Tusk" and "Remora".
-"Remora" is our DAG protocol --Remora: "Remora: A Low-latency DAG-based BFT through Optimistic Paths," in IEEE Transactions on Computers, doi: 10.1109/TC.2024.3461309
-"qcdag" is the DAG protocol in the paper: [SRDS,23]GradedDAG: An Asynchronous DAG-based BFT Consensus with Lower Latency
-"tusk" is the DAG protocol in the paper: [Eurosys'22]Narwhal and Tusk: a DAG-based mempool and efficient BFT consensus
+There are three DAG BFT, names "gradedDag", "Tusk" and "Remora".  
+
+"Remora" is our DAG protocol --Remora: "Remora: A Low-latency DAG-based BFT through Optimistic Paths," in IEEE Transactions on Computers, doi: 10.1109/TC.2024.3461309  
+"qcdag" is the DAG protocol in the paper: [SRDS,23]GradedDAG: An Asynchronous DAG-based BFT Consensus with Lower Latency  
+"tusk" is the DAG protocol in the paper: [Eurosys'22]Narwhal and Tusk: a DAG-based mempool and efficient BFT consensus  
 
 ### 2 Precondition
 - Recommended OS releases: Ubuntu 18.04 (other releases may also be OK)
